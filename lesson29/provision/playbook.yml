@@ -1,0 +1,82 @@
+---
+- name: Setup ospf
+  hosts: all
+  become: yes
+  gather_facts: false
+  tasks:
+    - name: Установка epel-release
+      yum:
+        name: epel-release
+        state: present
+
+    - name: disable ssl for repo epel
+      lineinfile: 
+        dest: /etc/yum.repos.d/epel.repo
+        insertafter: 'enabled=1'
+        line: 'sslverify=0'
+
+    - name: Установка quagga
+      yum:
+        name: quagga
+        state: present
+
+    - name: Disable SELinux
+      selinux:
+        state: disabled
+
+    - name: Включаем ip_forward
+      sysctl:
+        name: net.ipv4.ip_forward
+        value: '1'
+        sysctl_set: yes
+        state: present
+        reload: yes
+
+    - name: Включаем rp_filter
+      sysctl:
+        name: net.ipv4.conf.all.rp_filter
+        value: '0'
+        sysctl_set: yes
+        state: present
+        reload: yes
+
+    - name: Настраиваем zebra.conf
+      template:
+        src: templates/zebra.conf.j2
+        dest: /etc/quagga/zebra.conf
+        owner: root
+        group: root
+        mode: 0644
+      notify: restart zebra
+
+    - name: Настраиваем ospfd.conf
+      template:
+        src: templates/ospfd.conf.j2
+        dest: /etc/quagga/ospfd.conf
+        owner: root
+        group: root
+        mode: 0644
+      notify: restart ospfd
+      
+    #- name: Старт zebra
+    #  systemd:
+    #    name: zebra
+    #    state: started
+    #    enabled: yes
+       
+    #- name: Старт ospfd
+    #  systemd:
+    #    name: ospfd
+    #    state: started
+    #    enabled: yes
+
+  
+  handlers:
+  - name: restart zebra
+    service:
+      name: zebra
+      state: restarted
+  - name: restart ospfd
+    service:
+      name: ospfd
+      state: restarted

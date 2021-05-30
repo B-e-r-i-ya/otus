@@ -1,0 +1,51 @@
+---
+- hosts: all # part running on all hosts
+  become: true
+  gather_facts: false
+  tasks:
+  - name: tets
+    yum:
+      name:
+        - epel-release
+        - mc
+      state: latest
+  
+- hosts:
+    - testServer1
+    - testServer2
+    - testClient1
+    - testClient2
+  become: true
+  gather_facts: false
+  tasks:
+  - name: Настройка VLAN
+    template:
+      src: ./template/ifcfg-vlan.j2
+      dest: /etc/sysconfig/network-scripts/ifcfg-{{ vlan_physdev }}.{{ vlan_id }}
+  
+  - name: restarted Network
+    systemd:
+      name: network
+      state: restarted
+
+- hosts:
+    - inetRouter
+    - centralRouter  
+  become: true
+  gather_facts: false
+  tasks:    
+  - name: Настройка BOND
+    template:
+      src: ./template/ifcfg-bond0.j2
+      dest: /etc/sysconfig/network-scripts/ifcfg-{{ bond }}
+  - copy:
+      src: ./files/ifcfg-eth1
+      dest: /etc/sysconfig/network-scripts/ifcfg-eth1
+  - copy:
+      src: ./files/ifcfg-eth2
+      dest: /etc/sysconfig/network-scripts/ifcfg-eth2
+
+  - name: restarted Network
+    systemd:
+      name: network
+      state: restarted

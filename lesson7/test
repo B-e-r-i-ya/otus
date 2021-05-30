@@ -1,0 +1,95 @@
+#!/bin/bash
+
+lockfile=/tmp/lockfile
+if ( set -o noclobber; echo "$$" > "$lockfile") 2> /dev/null;
+then
+	 trap 'rm -f "$lockfile"; exit $?' INT TERM EXIT KILL
+
+
+			log_processing(){ #====== Считываем лог и приводим его в нужный формат
+							for ((i=1; i < ${line}; i++))
+							do
+							     str=`sed -n ${i}p ${logfile}` # Стичываем построчно
+							     text=`echo $str|awk '{print $1}'`
+							     time=`echo $str|awk '{print $4}'`
+							     req=`echo $str|awk '{print $7}'|cut -c 1`
+							     if [ ${req} = "/" ]
+							     then
+							     	req=`echo $str|awk '{print $7}'`
+							     else
+							     	req=`echo $str|awk '{print $6}'`
+							     fi
+
+							     cod=`echo $str|awk '{print $9}'`
+							     if [ ${cod} = ${bash} ]
+							     then
+							     	cod=`sed -n ${i}p ${logfile}|awk '{print $7}'`
+							     fi
+							     text="${text} ${req} ${cod} ${time}" # формируем новую строку
+
+							     echo $text >> /tmp/templog   # Записываем во временный файл
+							
+							done
+							}
+
+
+			log_report(){  #=====Собираем отчет
+								tmpfile=/tmp/templog
+								n=10 #топ n значений для отчета
+								line=`wc ${tmpfile}|awk '{print $1}'` #узнаем сколько строк в файле
+								#sed -n -e ${LINE},${line}p $1 > $tmpfile #считываем нужную часть во временный файл
+								s=`cat ${tmpfile}|awk '{print $4}'|head -n 1`
+								po=`tail -n 1 ${tmpfile}|awk '{print $4}'`
+								period="Период с ${s} по ${po}"
+								touch /tmp/report
+								echo $period >> /tmp/report
+								echo "${n} IP адресов (с наибольшим кол-вом запросов) с указанием кол-ва запросов c момента последнего запуска скрипта" >> /tmp/report
+								cat ${tmpfile} | sort | awk '{print $1}' | uniq -c | sort -rn | head -n $n >> /tmp/report
+								echo "${n} запрашиваемых адресов (с наибольшим кол-вом запросов) с указанием кол-ва запросов c момента последнего запуска скрипта" >> /tmp/report
+								cat ${tmpfile} | awk '{print $2}' | sort | uniq -c | sort -rn | head -n $n >> /tmp/report
+								echo "все ошибки c момента последнего запуска" >> /tmp/report
+								(cat ${tmpfile} | awk '{print $3}' | grep ^5|sort | uniq -c | sort -rn && cat ${tmpfile}| awk '{print $3}' | grep ^4|sort | uniq -c | sort -rn)|sort -rn >> /tmp/report
+								echo "список всех кодов возврата с указанием их кол-ва с момента последнего запуска" >> /tmp/report
+								cat ${tmpfile} | awk '{print $3}'|sort | uniq -c | sort -rn >> /tmp/report
+								
+							}
+
+			send_mail()		{
+								cat $1 | mail -s "Отчет по доступу" -r CnbktnV@gmail.com  $2
+							}
+			cleaning()		{
+								
+								rm /tmp/report
+								rm /tmp/templog
+								#source ~/.bashrc
+								sed -i 's/.*export LINE=.*/export LINE='${line1}'/' ~/.bashrc
+								
+							}
+
+
+
+			logfile=/home/stilet/otus/lesson7/access-4560-644067.log
+			echo $logfile
+			line=`wc ${logfile}|awk '{print $1}'`
+			line1=`wc ${logfile}|awk '{print $1}'`
+			
+			line=$(($line - $LINE))
+			#z=$(($x + $y))
+			echo $line
+			bash="\"-\""
+			log_processing
+			log_report /tmp/templog
+			send_mail /tmp/report hramovalexandr1988@yandex.ru
+			echo $line
+			
+			cleaning
+			echo $LINE
+
+rm -f "$lockfile"
+	 trap - INT TERM EXIT
+	 exec bash
+	else
+	 echo "Failed to acquire lockfile: $lockfile."
+	 echo "Held by $(cat $lockfile)"
+
+fi

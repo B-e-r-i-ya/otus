@@ -1,0 +1,79 @@
+---
+- hosts: all
+  become: true
+  tasks:
+  - name: Отключаем SELinux
+    selinux:
+      state: disabled
+
+  - name: install packages
+    yum:
+      name: "{{ packages }}"
+      state: present
+    vars:
+      packages:
+      - epel-release
+ 
+  - name: install packages
+    yum:
+      name: "{{ packages }}"
+      state: present
+    vars:
+      packages:
+      - openvpn
+      - easy-rsa
+
+  - name: инициализируем pki
+    shell: cd /etc/openvpn/ && /usr/share/easy-rsa/3.0.8/easyrsa init-pki
+
+  - name: Сгенерируем необходимýе клĀчи и сертификатý длā сервера
+    shell: cd /etc/openvpn/ && echo 'rasvpn' | /usr/share/easy-rsa/3.0.8/easyrsa build-ca nopass
+  - shell: cd /etc/openvpn/ && echo 'rasvpn' | /usr/share/easy-rsa/3.0.8/easyrsa gen-req server nopass
+  - shell: cd /etc/openvpn/ && echo 'yes' | /usr/share/easy-rsa/3.0.8/easyrsa sign-req server server
+  - shell: cd /etc/openvpn/ && /usr/share/easy-rsa/3.0.8/easyrsa gen-dh
+  - shell: openvpn --genkey --secret ta.key
+
+  - name: Сгенерируем сертификатý длā клиента
+    shell: cd /etc/openvpn/ && echo 'client' | /usr/share/easy-rsa/3.0.8/easyrsa gen-req client nopass
+  - shell: cd /etc/openvpn/ && echo 'yes' | /usr/share/easy-rsa/3.0.8/easyrsa sign-req client client 
+
+  - name: configure server
+    copy:
+      src: server.conf
+      dest: /etc/openvpn/server.conf
+
+  - name: Зададим параметр iroute для клиента
+    shell: echo 'iroute 192.168.33.0 255.255.255.0' > /etc/openvpn/client/client
+
+  - name: Останавливаем firewalld
+    systemd:
+        state: stopped
+        name: firewalld
+        #enabled: yes
+
+  - name: Запускаем openvpn сервер и добавлāем в автозагрузку
+    systemd:
+        state: started
+        name: openvpn@server
+        enabled: yes
+
+  - name:  Synchronization key
+    fetch:
+      src: "{{ item }}"
+      dest: key
+      mode: push
+    loop:
+      - /etc/openvpn/pki/ca.crt
+      - /etc/openvpn/pki/issued/client.crt
+      - /etc/openvpn/pki/private/client.key
+  #- name:  Synchronization key
+  #  fetch:
+  #    src: /etc/openvpn/pki/issued/client.crt
+  #    dest: key
+  #    mode: push
+
+  #- name:  Synchronization key
+  #  fetch:
+  #    src: /etc/openvpn/pki/private/client.key
+  #    dest: key
+  #    mode: push

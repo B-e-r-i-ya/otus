@@ -1,0 +1,113 @@
+---
+- hosts: all
+  become: yes
+  gather_facts: false
+  tasks:
+    - name: Set timezone to Asia/Barnaul
+      timezone:
+        name: Asia/Barnaul
+
+    #- name: Install packeg
+    #  yum:
+    #    name:
+    #      - chrony
+    #    state: latest
+
+    #- name: Enable chrony
+    #  shell: systemctl enable chronyd --now
+      #systemd:
+      #  name: chronyd
+      #  state: started
+      #  enable: yes
+
+    - name: Disable SELinux
+      selinux:
+        state: disabled
+
+
+
+- hosts: freeipaserver
+  become: yes
+  gather_facts: false
+  tasks:
+  - name: Disable SELinux
+    selinux:
+      state: disabled
+  - name: Set a hostname
+    hostname:
+      name: freeipaserver.otus.local
+  - shell: echo "192.168.1.1       freeipaserver.otus.local   freeipaserver" >> /etc/hosts
+  
+  - name: Брандмауэр
+    firewalld:
+      port: "{{ item }}"   
+      permanent: yes
+      state: enabled
+    loop:
+      - 53/udp
+      - 53/tcp
+      - 80/tcp
+      - 88/tcp
+      - 88/udp
+      - 123/udp
+      - 389/tcp
+      - 443/tcp
+      - 464/tcp
+      - 464/udp
+      - 636/tcp
+
+  - name: Install packeg
+    yum:
+      name:
+        - ipa-server
+        - ipa-server-dns
+      state: latest
+
+  - name: Настройка ipa-server
+    shell: ipa-server-install --setup-dns --auto-reverse --mkhomedir --hostname=freeipaserver.otus.local --domain=otus.local --realm=OTUS.LOCAL --ds-password=otus123! --admin-password=otus123! --no-forwarders -U
+  - name: Generate an OpenSSH keypair with the default values (4096 bits, rsa)
+    file:
+      path: /vagrant/ssh
+      state: directory
+  - openssh_keypair:
+      path: /vagrant/ssh/id_rsa_freeipa
+  - shell: cat /vagrant/ssh/id_rsa_freeipa
+    register: shell_result
+
+  - ipa_user:
+     name: user1
+     givenname: user1
+     sn: P
+     password: password
+     sshpubkey:
+     - "{{ shell_result.stdout }}"
+     loginshell: /bin/bash
+     ipa_host: freeipa.hw-otus.local
+     ipa_user: admin
+     ipa_pass: otusotus
+
+- hosts: freeipaclient
+  become: yes
+  gather_facts: false
+  tasks:
+  - name: Set a hostname
+    hostname:
+      name: freeipaclient.otus.local
+  - shell: echo -e "search otus.local \n nameserver 192.168.1.1" >> /etc/resolv.conf
+
+  - name: Install packeg
+    yum:
+      name:
+        - ipa-client
+      state: latest
+
+  - name: configure ipa-client
+    command: |
+      sudo ipa-client-install \
+      --principal admin@OTUS.LOCAL \
+      --password otus \
+      --server freeipaserver.otus.local \
+      --domain otus.local \
+      --realm OTUS.LOCAL \
+      --mkhomedir \
+      --force-join

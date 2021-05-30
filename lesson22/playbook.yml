@@ -1,0 +1,65 @@
+---
+- hosts: all # part running on all hosts
+  become: true
+  tasks:
+  - name: rpm key
+    shell: rpm --import https://packages.elastic.co/GPG-KEY-elasticsearch
+  - name: install repo
+    copy:
+      src: ./repo/elastic.repo
+      dest: /etc/yum.repos.d/elastic.repo
+      owner: root
+      group: root
+      mode: '0644'
+  - yum:
+      name: epel-release
+
+
+  - name: elk server
+    block:
+      - name: Install packages
+        yum:
+          name: "{{ item }}"
+          state: latest
+        loop:
+          - java-1.7.0-openjdk
+          - mc
+          - elasticsearch
+          - kibana
+          - logstash
+      - name: Start services
+        systemd:
+          name: "{{ item }}"
+          state: started
+          enable: yes
+        loop:
+          - elasticsearch
+          - kibana
+          - logstash
+
+    when: ansible_hostname == "elk"
+
+  - name: elk client
+    block:
+      - name: install nginx repo
+        copy:
+          src: ./repo/nginx.repo
+          dest: /etc/yum.repos.d/nginx.repo
+          owner: root
+          group: root
+          mode: '0644'
+
+      - name: Install packages
+        yum:
+          name: "{{ item }}"
+          state: present
+        loop:
+          - mc
+          - nginx
+          - filebeat
+          - auditbeat
+
+   #   - name: Сonfiguring services
+
+
+    when: ansible_hostname == "web"

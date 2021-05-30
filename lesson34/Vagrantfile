@@ -1,0 +1,30 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+Vagrant.configure(2) do |config|
+  config.vm.box = "centos/7"
+
+  config.vm.provider "virtualbox" do |v|
+    v.memory = 1024
+  end
+
+  config.vm.define "freeipaserver" do |frs|
+    frs.vm.network "private_network", adapter: 2, ip: "192.168.1.1", netmask: "255.255.255.252", virtualbox__intnet: "eth1"
+    #config.vm.network "public_network", ip: "192.168.112.121"
+    #frs.vm.hostname = "freeipaserver"
+  end
+
+  config.vm.define "freeipaclient" do |frc|
+    frc.vm.network "private_network", adapter: 2, ip: "192.168.1.2", netmask: "255.255.255.252", virtualbox__intnet: "eth1"
+    #frc.vm.hostname = "r2"
+  end
+
+  
+  config.vm.provision "ansible" do |ansible|
+    #ansible.verbose = "vvv"
+    #ansible.inventory_path = './playbooks/all.yml'
+    ansible.playbook = "./provision/playbook.yml"
+    ansible.become = "true"
+  end
+
+end

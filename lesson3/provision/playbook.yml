@@ -1,0 +1,208 @@
+---
+- hosts: all
+  become: true
+  tasks:
+  - name: Усатновка ПО
+    yum:
+      name: "{{ packages }}"
+      state: present
+    vars:
+      packages:
+      - mdadm
+      - smartmontools
+      - hdparm
+      - gdisk
+      - lvm2
+      - xfsdump
+
+  - name: Disable SELinux
+    selinux:
+      state: disabled
+
+  - name: Создаем "vg_tmp_root" Volume group.
+    lvg:
+      pvs: /dev/sdb
+      vg: vg_tmp_root
+      pesize: "8"
+      pv_options: '-Z y'
+      force: no
+      state: present
+ 
+  - name: Создаем "lv_tmp_root" Logical Volume.
+    lvol:
+      vg: vg_tmp_root
+      lv: lv_tmp_root
+      size: +100%FREE
+      active: yes
+      force: no
+      state: present
+    
+  - name: Create a xfs filesystem on lvm /dev/mapper/vg_tmp_root-lv_tmp_root.
+    filesystem:
+      fstype: xfs
+      dev: "/dev/vg_tmp_root/lv_tmp_root"
+      force: no
+
+  - name: Mount the created xfs filesystem.
+    shell: mount /dev/vg_tmp_root/lv_tmp_root /mnt
+  #  mount:
+  #    path: /mnt
+  #    src: /dev/mapper/vg_tmp_root-lv_tmp_root
+  #    fstype: xfs
+  #    opts: rw,nosuid,noexec
+  #    state: mounted
+
+  - name: Копируем корень
+    shell: xfsdump -v silent -J - /dev/VolGroup00/LogVol00 | xfsrestore -v silent -J - /mnt
+
+  - name: Монтируем оставшиеся каталоги
+    shell: for i in /proc/ /sys/ /dev/ /run/ /boot/; do mount --bind $i /mnt/$i; done
+  
+  - name: создаем новый initramfs
+    shell: chroot /mnt sh -c "grub2-mkconfig -o /boot/grub2/grub.cfg > /dev/null 2>&1"
+  - shell: chroot /mnt mv /boot/initramfs-$(uname -r).img /boot/initramfs-$(uname -r).img.old
+  - shell: chroot /mnt dracut /boot/initramfs-$(uname -r).img $(uname -r)
+
+  - name: записываем новый загрузчик
+    shell: chroot /mnt sed -i 's+VolGroup00/LogVol00+vg_tmp_root/lv_tmp_root+g' /boot/grub2/grub.cfg
+
+  - name: Reboot
+    reboot:
+      reboot_timeout: 3600
+
+  - name: Удаляем "LogVol00" Logical Volume.
+    lvol:
+      vg: VolGroup00
+      lv: LogVol00
+      force: yes
+      state: absent
+
+  - name: Создаем "LogVol00" Logical Volume.
+    lvol:
+      vg: VolGroup00
+      lv: LogVol00
+      size: 8g
+      active: yes
+      force: no
+      state: present
+
+  - name: Create a xfs filesystem on lvm LogVol00.
+    filesystem:
+      fstype: xfs
+      dev: /dev/VolGroup00/LogVol00
+      force: no
+
+  - name: Монтируем
+    shell: mount /dev/VolGroup00/LogVol00 /mnt
+
+  - name: переносим систему
+    shell: xfsdump -v silent -J - /dev/vg_tmp_root/lv_tmp_root | sudo xfsrestore -v silent -J - /mnt
+
+  - name: монтируем системные разделы
+    shell: for i in /proc/ /sys/ /dev/ /run/ /boot/; do sudo mount --bind $i /mnt/$i; done
+
+  - name: Записываем новый загрузчик и правим grub.cfg
+    shell: chroot /mnt sh -c "grub2-mkconfig -o /boot/grub2/grub.cfg > /dev/null 2>&1"
+  - shell: chroot /mnt mv /boot/initramfs-$(uname -r).img /boot/initramfs-$(uname -r).img.old2
+  - shell: chroot /mnt sh -c "dracut /boot/initramfs-$(uname -r).img $(uname -r) > /dev/null 2>&1"
+  - shell: sed -i 's+vg_tmp_root/lv_tmp_root+VolGroup00/LogVol00+g' /boot/grub2/grub.cfg
+
+  - name: Reboot
+    reboot:
+      reboot_timeout: 3600
+
+  - name: Удаляем "lv_tmp_root" Logical Volume.
+    lvol:
+      vg: vg_tmp_root
+      lv: lv_tmp_root
+      force: yes
+      state: absent
+
+  - name: Remove a volume group vg_tmp_root
+    lvg:
+      vg: vg_tmp_root
+      state: absent
+
+  - name: Создаем "home" Logical Volume.
+    lvol:
+      vg: VolGroup00
+      lv: home
+      size: 1g
+      active: yes
+      force: no
+      state: present
+
+  - name: Создаем "var" Logical Volume.
+    shell: lvcreate -L 1G -m1 --alloc anywhere -n var VolGroup00
+  #  lvol:
+  #    vg: VolGroup00
+  #    lv: var
+  #    size: 1g
+  #    opts: -m1 --alloc anywhere
+  #    active: yes
+  #    force: no
+  #    state: present
+
+  - name: Create xfs filesystem /dev/VolGroup00.
+    shell: mkfs.xfs -q /dev/VolGroup00/home
+  - shell: mkfs.xfs -q /dev/VolGroup00/var
+  #  filesystem:
+  #    fstype: xfs
+  #    dev: /dev/VolGroup00/{{ partition }}/
+  #    force: no
+  #  vars:
+  #    partition:
+  #    - home
+  #    - var
+
+  - name: Добавим новые точки монтирования в fstab
+    shell: echo "UUID=`sudo blkid -s UUID -o value /dev/VolGroup00/home` /home  xfs  defaults  0 0" | sudo tee -a /etc/fstab
+  - shell: echo "UUID=`sudo blkid -s UUID -o value /dev/VolGroup00/var` /var  xfs  defaults  0 0" | sudo tee -a /etc/fstab
+
+  - name: Creates directory
+    file:
+      path: /mnt/home
+      state: directory
+  - file:
+      path: /mnt/var
+      state: directory
+
+  - shell: mount /dev/VolGroup00/home /mnt/home
+  - shell: mount /dev/VolGroup00/var /mnt/var
+
+
+  - name: Синхронизируем папки
+    shell: rsync -axu /home/ /mnt/home/
+  - shell: rsync -axu /var/ /mnt/var/
+
+  - name: Reboot
+    reboot:
+      reboot_timeout: 3600
+
+  - name: Генерируем данные
+    shell: for i in {1..9}; do dd if=/dev/zero of=/home/file_$i bs=1M count=10 2> /dev/null; done
+
+  - shell: ls /home/
+    register: shell_result
+
+  - name: Смотрим что есть
+    debug:
+      var: shell_result.stdout_lines
+
+  - name: Создаем snapshot "home" 
+    lvol:
+      vg: VolGroup00
+      lv: home
+      snapshot: snap_home1
+      size: 1g
+
+  - name: Удаляем некоторые файлы
+    shell: for i in {1..5}; do rm -f /home/file_$i; done
+
+  - shell: ls /home/
+    register: shell_result
+
+  - name: Смотрим что осталось
+    debug:
+      var: shell_result.stdout_lines
+

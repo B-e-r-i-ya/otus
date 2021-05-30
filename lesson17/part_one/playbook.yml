@@ -1,0 +1,18 @@
+--- 
+- hosts: all
+  become: true
+  tasks: 
+    - name: "Install EPEL release"
+      shell: yum install -y epel-release
+    - name: "Install NGINX"
+      yum: 
+        name: "{{ packages }}"
+        state: present
+      vars: 
+        packages: 
+          - nginx
+    - name: "Enable/Start NGINX service"
+      systemd: 
+        enabled: true
+        name: nginx
+        state: started

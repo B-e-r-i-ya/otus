@@ -1,0 +1,5 @@
+vlan_id: 1
+vlan_physdev: eth2
+vlan_ipaddr: 10.10.10.10
+vlan_netmask: 255.255.255.0
+vlan_gateway: 10.10.10.100

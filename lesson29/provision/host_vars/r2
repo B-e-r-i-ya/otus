@@ -1,0 +1,7 @@
+router_name: 'r2'
+eth2_cost: '10'
+eth3_cost: '10'
+router_area: '0.0.0.2'
+area_0_network1: '192.168.1.0/30'
+area_0_network2: '192.168.2.0/30'
+area_cidr: '10.10.20.0/24'

@@ -1,0 +1,30 @@
+! -*- ospf -*-
+!
+! OSPFd sample configuration file
+!
+!
+hostname {{ router_name }}
+password zebra
+
+log stdout
+log file /var/log/quagga/ospfd.log
+
+interface eth2
+ip ospf mtu-ignore
+ip ospf network point-to-point
+ip ospf cost {{ eth2_cost }}
+ip ospf hello-interval 5
+ip ospf dead-interval 10
+
+interface eth3
+ip ospf mtu-ignore
+ip ospf network point-to-point
+ip ospf cost {{ eth3_cost }}
+ip ospf hello-interval 5
+ip ospf dead-interval 10
+
+router ospf
+ospf router-id {{ router_area }}
+network {{ area_cidr }}  area {{ router_area }}
+network {{ area_0_network1 }} area 0.0.0.0
+network {{ area_0_network2 }} area 0.0.0.0

@@ -1,0 +1,18 @@
+---
+# tasks file for install_nginx
+- name: Установка NGINX на RedHat
+  block:
+  - name: Устарновка epel-release
+    yum:
+      name: "{{ item }}"
+    loop:
+      - epel-release
+
+  - name: Установка пакетов
+    yum:
+      name: "{{ item }}"
+    loop:
+      - nginx
+
+  - name: 
+  when: ansible_os_family == "RedHat"
